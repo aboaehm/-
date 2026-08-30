@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام الدفع الموحد - لوحة التاجر</title>
-    <!-- مكتبة توليد QR Code -->
+    <!-- مكتبة توليد QR Code (خفيفة) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <!-- مكتبة Supabase للربط السحابي -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -51,14 +51,9 @@
             margin-bottom: 16px;
         }
 
-        label {
-            display: block;
-            margin-bottom: 6px;
-            font-weight: 600;
-            font-size: 14px;
-        }
+        label { display:block; margin-bottom:6px; font-weight:600; }
 
-        input {
+        input[type="text"], input[type="tel"] {
             width: 100%;
             padding: 10px 12px;
             border: 1px solid var(--border);
@@ -67,461 +62,350 @@
             box-sizing: border-box;
             outline: none;
             transition: border-color 0.2s;
+            direction: ltr;
         }
 
-        input:focus {
-            border-color: var(--primary);
-        }
+        input[type="text"]:focus, input[type="tel"]:focus { border-color: var(--primary); }
 
-        .wallet-row {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
+        .wallet-row { display:flex; gap:8px; margin-bottom:8px; }
 
-        button {
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            transition: background-color 0.2s;
-        }
+        button { background-color: var(--primary); color:white; border:none; padding:12px; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer; width:100%; transition: background-color .2s; }
+        button:hover { background-color: var(--primary-hover); }
+        .btn-secondary { background-color:#64748b; margin-top:8px; }
+        .btn-danger { background-color:#ef4444; width:auto; padding:6px 12px; font-size:14px; }
+        .btn-danger:hover { background-color:#dc2626; }
 
-        button:hover {
-            background-color: var(--primary-hover);
-        }
+        #qr-container { display:flex; justify-content:center; margin:20px 0; }
+        #qr-container canvas, #qr-container img { border-radius:8px; padding:8px; background:white; border:1px solid var(--border); }
 
-        .btn-secondary {
-            background-color: #64748b;
-            margin-top: 8px;
-        }
-        .btn-secondary:hover {
-            background-color: #475569;
-        }
+        .wallet-card { background:#f1f5f9; padding:12px; border-radius:8px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
 
-        .btn-danger {
-            background-color: #ef4444;
-            width: auto;
-            padding: 6px 12px;
-            font-size: 14px;
-        }
-        .btn-danger:hover {
-            background-color: #dc2626;
-        }
+        .hidden { display:none !important; }
+        .loading { text-align:center; font-size:18px; color:var(--text-muted); padding:20px; }
 
-        #qr-container {
-            display: flex;
-            justify-content: center;
-            margin: 20px 0;
-        }
+        .link-box { background:#f0f5ff; padding:10px; border-radius:8px; word-break:break-all; text-align:center; }
 
-        #qr-container canvas, #qr-container img {
-            border-radius: 8px;
-            padding: 8px;
-            background: white;
-            border: 1px solid var(--border);
-        }
-
-        .wallet-card {
-            background: #f1f5f9;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        .loading {
-            text-align: center;
-            font-size: 18px;
-            color: var(--text-muted);
-            padding: 20px;
-        }
+        .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; background: rgba(0,0,0,.8); color:white; padding:8px 12px; border-radius:8px; display:none; }
     </style>
 </head>
 <body>
-
     <div class="container">
-        <!-- شاشة التحميل عند جلب البيانات -->
         <div id="loading-view" class="loading hidden">جاري التحميل...</div>
 
-        <!-- لوحة التاجر (تظهر إذا لم يكن هناك مَعرف في الرابط) -->
-        <div id="admin-view" class="hidden">
+        <!-- لوحة التاجر -->
+        <div id="admin-view" class="hidden" aria-live="polite">
             <h2>لوحة إعدادات التاجر</h2>
+
             <div class="form-group">
-                <label>اسم المتجر / التاجر</label>
-                <input type="text" id="merchantNameInput" placeholder="مثال: متجر السعيد">
+                <label for="merchantNameInput">اسم المتجر / التاجر</label>
+                <input id="merchantNameInput" type="text" placeholder="مثال: متجر السعيد" autocomplete="organization">
             </div>
+
             <div class="form-group">
-                <label>رقم الهاتف الأساسي</label>
-                <input type="text" id="merchantPhoneInput" placeholder="777000000">
+                <label for="merchantPhoneInput">رقم الهاتف الأساسي</label>
+                <input id="merchantPhoneInput" type="tel" placeholder="777000000" inputmode="tel">
             </div>
 
             <div class="form-group">
                 <label>المحافظ والأرقام</label>
-                <div id="walletsList"></div>
+                <div id="walletsList" aria-live="polite"></div>
                 <button type="button" class="btn-secondary" onclick="addWalletRow()">+ إضافة محفظة أخرى</button>
             </div>
 
-            <button onclick="saveMerchantData()">حفظ وتوليد الـ QR</button>
+            <button id="saveBtn" onclick="saveMerchantData()">حفظ وتوليد الـ QR</button>
 
-            <div id="qr-section" class="hidden" style="margin-top: 20px;">
+            <div id="qr-section" class="hidden" style="margin-top:20px;">
                 <h3>رمز الـ QR الخاص بك</h3>
                 <div id="qr-container"></div>
-                <p style="text-align: center; font-size: 13px; color: var(--text-muted);">امسح الرمز أو انسخ رابط صفحتك للزبائن</p>
+                <p style="text-align:center; font-size:13px; color:var(--text-muted);">امسح الرمز أو انسخ رابط صفحتك للزبائن</p>
+                <div class="link-box" id="publicLink"></div>
                 <button class="btn-secondary" onclick="copyCustomerLink()">نسخ رابط صفحة الدفع</button>
             </div>
         </div>
 
-        <!-- لوحة العميل (تظهر تلقائياً عندما يفتح الزبون رابط التاجر) -->
+        <!-- لوحة العميل -->
         <div id="customer-view" class="hidden">
             <h2 id="custMerchantName">اسم المتجر</h2>
-            <p style="text-align: center; color: var(--text-muted); margin-bottom: 20px;">اختر المحفظة للدفع مباشرة</p>
+            <p style="text-align:center; color:var(--text-muted); margin-bottom:20px;">اختر المحفظة للدفع مباشرة</p>
             <div id="custWalletsContainer"></div>
         </div>
     </div>
 
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
     <script>
-        // إعدادات اتصال Supabase
+        // --- إعدادات Supabase (المفتاح قابل للنشر فقط) ---
         const SUPABASE_URL = 'https://neouddfxqysjuiidscxp.supabase.co';
         const SUPABASE_KEY = 'Sb_publishable_H1LBZwUHqgU5PSAw6sXAFg_DgefUOph';
-        
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // توليد معرف عشوائي فريد للتاجر
-        function generateId() {
-            return 'M' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        // Helpers
+        function show(el) { el.classList.remove('hidden'); }
+        function hide(el) { el.classList.add('hidden'); }
+        function showToast(msg, timeout = 2000) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', timeout);
         }
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const merchantId = urlParams.get('m');
+        function generateId() {
+            return 'M' + Math.random().toString(36).substring(2, 9).toUpperCase();
+        }
 
-            if (merchantId) {
-                // وضع العميل: جلب بيانات التاجر من قاعدة البيانات
-                document.getElementById('loading-view').classList.remove('hidden');
-                await loadMerchantForCustomer(merchantId);
-            } else {
-                // وضع التاجر: فتح لوحة الإعدادات
-                document.getElementById('admin-view').classList.remove('hidden');
-                
-                // التحقق هل لديه بيانات محفوظة محلياً أو جلبها
-                let savedId = localStorage.getItem('current_merchant_id');
-                if (savedId) {
-                    await loadMerchantToAdmin(savedId);
-                } else {
-                    addWalletRow('يمن والت', '');
-                    addWalletRow('كاش', '');
-                }
-            }
-        });
+        function generatePublicSlug() {
+            // short, URL-safe slug; collision unlikely but handled by upsert
+            return Math.random().toString(36).substring(2,8);
+        }
 
+        // Create a wallet row without using innerHTML to avoid XSS
         function addWalletRow(type = '', number = '') {
             const container = document.getElementById('walletsList');
             const row = document.createElement('div');
             row.className = 'wallet-row';
-            row.innerHTML = `
-                <input type="text" placeholder="اسم المحفظة (مثل: جوالي، كاش)" value="${type}" class="w-type" style="flex: 1;">
-                <input type="text" placeholder="رقم الحساب" value="${number}" class="w-num" style="flex: 1;">
-                <button type="button" class="btn-danger" onclick="this.parentElement.remove()">حذف</button>
-            `;
+
+            const typeInput = document.createElement('input');
+            typeInput.type = 'text';
+            typeInput.className = 'w-type';
+            typeInput.placeholder = 'اسم المحفظة (مثل: جوالي، كاش)';
+            typeInput.value = type;
+
+            const numInput = document.createElement('input');
+            numInput.type = 'text';
+            numInput.className = 'w-num';
+            numInput.placeholder = 'رقم الحساب';
+            numInput.value = number;
+            numInput.inputMode = 'tel';
+            numInput.style.direction = 'ltr';
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'btn-danger';
+            delBtn.textContent = 'حذف';
+            delBtn.onclick = () => row.remove();
+
+            row.appendChild(typeInput);
+            row.appendChild(numInput);
+            row.appendChild(delBtn);
+
             container.appendChild(row);
         }
 
+        // Save merchant data (creates or updates). Uses a stable merchant id stored in localStorage.
         async function saveMerchantData() {
-            const name = document.getElementById('merchantNameInput').value.trim();
-            const phone = document.getElementById('merchantPhoneInput').value.trim();
-            
-            if (!name) {
-                alert('الرجاء إدخال اسم المتجر');
-                return;
-            }
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            const previousText = saveBtn.textContent;
+            saveBtn.textContent = 'جاري الحفظ...';
 
-            let wallets = [];
-            document.querySelectorAll('.wallet-row').forEach(row => {
-                const type = row.querySelector('.w-type').value.trim();
-                const number = row.querySelector('.w-num').value.trim();
-                if (type && number) {
-                    wallets.push({ type, number });
+            try {
+                const name = document.getElementById('merchantNameInput').value.trim();
+                const phone = document.getElementById('merchantPhoneInput').value.trim();
+                if (!name) {
+                    showToast('الرجاء إدخال اسم المتجر');
+                    return;
                 }
-            });
 
-            if (wallets.length === 0) {
-                alert('الرجاء إضافة محفظة واحدة على الأقل برقمها الصحيح');
-                return;
-            }
+                const wallets = [];
+                document.querySelectorAll('.wallet-row').forEach(row => {
+                    const type = row.querySelector('.w-type').value.trim();
+                    const number = row.querySelector('.w-num').value.trim();
+                    if (type && number) wallets.push({ type, number });
+                });
+                if (wallets.length === 0) {
+                    showToast('الرجاء إضافة محفظة واحدة على الأقل');
+                    return;
+                }
 
-            let merchantId = localStorage.getItem('current_merchant_id');
-            if (!merchantId) {
-                merchantId = generateId();
-                localStorage.setItem('current_merchant_id', merchantId);
-            }
+                let merchantId = localStorage.getItem('current_merchant_id');
+                if (!merchantId) {
+                    merchantId = generateId();
+                    localStorage.setItem('current_merchant_id', merchantId);
+                }
 
-            // الحفظ في قاعدة بيانات Supabase
-            const { error } = await supabaseClient
-                .from('merchants')
-                -upsert({
+                // ensure there is a public_slug (used in the customer link)
+                let publicSlug = localStorage.getItem('current_public_slug');
+
+                // upsert merchant. If publicSlug not present generate it server-side (we keep client-side fallback)
+                if (!publicSlug) publicSlug = generatePublicSlug();
+
+                const payload = {
                     id: merchantId,
                     merchant_name: name,
                     merchant_phone: phone,
-                    wallets: wallets
-                });
+                    wallets: wallets,
+                    public_slug: publicSlug
+                };
 
-            if (error) {
-                alert('حدث خطأ أثناء الحفظ: ' + error.message);
-                return;
-            }
+                const { data, error } = await supabase
+                    .from('merchants')
+                    .upsert(payload, { onConflict: 'id' })
+                    .select();
 
-            alert('تم الحفظ بنجاح!');
-            generateQRCode(merchantId);
-        }
-
-        async function loadMerchantToAdmin(merchantId) {
-            const { data, error } = await supabaseClient
-                .from('merchants')
-                .select('*')
-                .eq('id', merchantId)
-                .single();
-
-            if (data) {
-                document.getElementById('merchantNameInput').value = data.merchant_name || '';
-                document.getElementById('merchantPhoneInput').value = data.merchant_phone || '';
-                
-                const container = document.getElementById('walletsList');
-                container.innerHTML = '';
-                if (data.wallets && data.wallets.length > 0) {
-                    data.wallets.forEach(w => addWalletRow(w.type, w.number));
-                } else {
-                    addWalletRow();
+                if (error) {
+                    console.error('Supabase save error', error);
+                    showToast('حدث خطأ أثناء الحفظ');
+                    return;
                 }
-                generateQRCode(merchantId);
-            } else {
-                addWalletRow();
+
+                // store public slug for fast reuse
+                localStorage.setItem('current_public_slug', publicSlug);
+
+                showToast('تم الحفظ بنجاح');
+                // show QR and link
+                generateQRCode(publicSlug);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = previousText;
             }
         }
 
-        function generateQRCode(merchantId) {
+        function generateQRCode(publicSlug) {
             const qrSection = document.getElementById('qr-section');
             const qrContainer = document.getElementById('qr-container');
             qrContainer.innerHTML = '';
-            qrSection.classList.remove('hidden');
+            show(qrSection);
 
-            const fullLink = window.location.origin + window.location.pathname + '?m=' + merchantId;
-            
-            new QRCode(qrContainer, {
-                text: fullLink,
-                width: 180,
-                height: 180
-            });
+            const fullLink = window.location.origin + window.location.pathname + '?m=' + encodeURIComponent(publicSlug);
+            // render link text
+            const publicLinkBox = document.getElementById('publicLink');
+            publicLinkBox.textContent = fullLink;
+
+            new QRCode(qrContainer, { text: fullLink, width: 180, height: 180 });
         }
 
         function copyCustomerLink() {
-            const merchantId = localStorage.getItem('current_merchant_id');
-            const fullLink = window.location.origin + window.location.pathname + '?m=' + merchantId;
-            navigator.clipboard.writeText(fullLink);
-            alert('تم نسخ رابط صفحة الدفع بنجاح!');
+            const publicSlug = localStorage.getItem('current_public_slug');
+            if (!publicSlug) { showToast('لا يوجد رابط محفوظ'); return; }
+            const fullLink = window.location.origin + window.location.pathname + '?m=' + encodeURIComponent(publicSlug);
+            navigator.clipboard.writeText(fullLink).then(() => showToast('تم نسخ رابط صفحة الدفع'));   
         }
 
-        async function loadMerchantForCustomer(merchantId) {
-            const { data, error } = await supabaseClient
-                .from('merchants')
-                .select('*')
-                .eq('id', merchantId)
-                .single();
+        async function loadMerchantToAdmin(merchantId) {
+            try {
+                const { data, error } = await supabase
+                    .from('merchants')
+                    .select('*')
+                    .eq('id', merchantId)
+                    .maybeSingle();
 
-            document.getElementById('loading-view').classList.add('hidden');
+                if (error) {
+                    console.error('loadMerchantToAdmin error', error);
+                    return;
+                }
 
-            if (error || !data) {
-                document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>عذراً، لم يتم العثور على بيانات هذا التاجر أو أن الرابط غير صحيح.</h2></div>';
+                if (data) {
+                    document.getElementById('merchantNameInput').value = data.merchant_name || '';
+                    document.getElementById('merchantPhoneInput').value = data.merchant_phone || '';
+                    localStorage.setItem('current_public_slug', data.public_slug || '');
+
+                    const container = document.getElementById('walletsList');
+                    container.innerHTML = '';
+                    if (data.wallets && data.wallets.length > 0) data.wallets.forEach(w => addWalletRow(w.type, w.number));
+                    else addWalletRow();
+
+                    if (data.public_slug) generateQRCode(data.public_slug);
+                } else {
+                    addWalletRow();
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function loadMerchantForCustomer(publicSlug) {
+            show(document.getElementById('loading-view'));
+            try {
+                const { data, error } = await supabase
+                    .from('merchants')
+                    .select('*, wallets')
+                    .eq('public_slug', publicSlug)
+                    .maybeSingle();
+
+                hide(document.getElementById('loading-view'));
+
+                if (error || !data) {
+                    document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>عذراً، لم يتم العثور على بيانات هذا التاجر</h2></div>';
+                    return;
+                }
+
+                show(document.getElementById('customer-view'));
+                document.getElementById('custMerchantName').textContent = data.merchant_name || 'متجر';
+
+                const container = document.getElementById('custWalletsContainer');
+                container.innerHTML = '';
+
+                if (data.wallets && data.wallets.length > 0) {
+                    data.wallets.forEach(w => {
+                        const card = document.createElement('div');
+                        card.className = 'wallet-card';
+
+                        const left = document.createElement('div');
+                        const title = document.createElement('div');
+                        const strong = document.createElement('strong');
+                        strong.textContent = w.type;
+                        const number = document.createElement('div');
+                        number.style.fontSize = '18px';
+                        number.style.fontWeight = '700';
+                        number.style.color = 'var(--primary)';
+                        number.style.direction = 'ltr';
+                        number.textContent = w.number;
+
+                        left.appendChild(strong);
+                        left.appendChild(number);
+
+                        const btn = document.createElement('button');
+                        btn.style.width = 'auto';
+                        btn.style.padding = '8px 16px';
+                        btn.textContent = 'نسخ الرقم';
+                        btn.onclick = async () => {
+                            try {
+                                await navigator.clipboard.writeText(w.number);
+                                showToast('تم نسخ الرقم');
+                            } catch (e) {
+                                showToast('فشل النسخ');
+                            }
+                        };
+
+                        card.appendChild(left);
+                        card.appendChild(btn);
+                        container.appendChild(card);
+                    });
+                } else {
+                    const p = document.createElement('p');
+                    p.style.textAlign = 'center';
+                    p.style.color = 'var(--text-muted)';
+                    p.textContent = 'لا توجد محافظ مضافة حالياً.';
+                    container.appendChild(p);
+                }
+            } catch (err) {
+                console.error(err);
+                hide(document.getElementById('loading-view'));
+                document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>حدث خطأ غير متوقع</h2></div>';
+            }
+        }
+
+        // On load, decide which view to show based on ?m=publicSlug
+        window.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const publicSlug = urlParams.get('m');
+
+            if (publicSlug) {
+                // customer flow
+                hide(document.getElementById('admin-view'));
+                await loadMerchantForCustomer(publicSlug);
                 return;
             }
 
-            document.getElementById('customer-view').classList.remove('hidden');
-            document.getElementById('custMerchantName').innerText = data.merchant_name;
-
-            const container = document.getElementById('custWalletsContainer');
-            container.innerHTML = '';
-
-            if (data.wallets && data.wallets.length > 0) {
-                data.wallets.forEach(w => {
-                    const card = document.createElement('div');
-                    card.className = 'wallet-card';
-                    card.innerHTML = `
-                        <div>
-                            <strong>${w.type}</strong><br>
-                            <span dir="ltr" style="font-size: 18px; font-weight: bold; color: var(--primary);">${w.number}</span>
-                        </div>
-                        <button style="width: auto; padding: 8px 16px;" onclick="navigator.clipboard.writeText('${w.number}'); alert('تم نسخ الرقم: ${w.number}');">نسخ الرقم</button>
-                    `;
-                    container.appendChild(card);
-                });
-            } else {
-                container.innerHTML = '<p style="text-align: center; color: var-text-muted);">لا توجد محافظ مضافة حالياً.</p>';
+            // admin flow
+            show(document.getElementById('admin-view'));
+            const savedId = localStorage.getItem('current_merchant_id');
+            if (savedId) await loadMerchantToAdmin(savedId);
+            else {
+                addWalletRow('يمن والت', '');
+                addWalletRow('كاش', '');
             }
-        }
+        });
     </script>
-</body>
-</html>
-        document.getElementById('authScreen').classList.remove('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
-      }
-    });
-
-    // دوال المصادقة
-    function signup() {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      auth.createUserWithEmailAndPassword(email, password)
-        .then(() => { /* تم */ })
-        .catch(err => alert(err.message));
-    }
-
-    function login() {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      auth.signInWithEmailAndPassword(email, password)
-        .then(() => { /* تم */ })
-        .catch(err => alert(err.message));
-    }
-
-    function logout() {
-      auth.signOut();
-    }
-
-    // دوال قاعدة البيانات
-    function loadMerchantData() {
-      if (!currentUser) return;
-      db.collection('merchants').doc(currentUser.uid).get().then(doc => {
-        if (doc.exists) {
-          merchantData = doc.data();
-          document.getElementById('merchantName').value = merchantData.name || '';
-          document.getElementById('merchantPhone').value = merchantData.phone || '';
-          renderWallets();
-          generatePublicLink();
-        } else {
-          merchantData = { name: '', phone: '', wallets: [] };
-          saveData(); // إنشاء مستند فارغ
-        }
-      });
-    }
-
-    function saveData() {
-      if (!currentUser) return;
-      const name = document.getElementById('merchantName').value.trim();
-      const phone = document.getElementById('merchantPhone').value.trim();
-      const wallets = [];
-      document.querySelectorAll('.wallet-item').forEach(item => {
-        const type = item.querySelector('select').value;
-        const number = item.querySelector('input[type="text"]').value.trim();
-        if (type && number) wallets.push({ type, number });
-      });
-      merchantData = { name, phone, wallets, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-      db.collection('merchants').doc(currentUser.uid).set(merchantData)
-        .then(() => { alert('تم الحفظ بنجاح'); generatePublicLink(); })
-        .catch(err => alert('خطأ: ' + err.message));
-    }
-
-    function addWallet() {
-      const div = document.createElement('div');
-      div.className = 'wallet-item';
-      div.innerHTML = `
-        <select>
-          <option value="يمن والت">يمن والت</option>
-          <option value="كاش">كاش</option>
-          <option value="موبايل موني">موبايل موني</option>
-          <option value="محفظتي">محفظتي</option>
-          <option value="شمول تم">شمول تم</option>
-        </select>
-        <input type="text" placeholder="رقم المحفظة">
-        <button class="secondary" onclick="this.parentElement.remove()">حذف</button>
-      `;
-      document.getElementById('walletsList').appendChild(div);
-    }
-
-    function renderWallets() {
-      const container = document.getElementById('walletsList');
-      container.innerHTML = '';
-      if (merchantData && merchantData.wallets) {
-        merchantData.wallets.forEach(w => {
-          const div = document.createElement('div');
-          div.className = 'wallet-item';
-          div.innerHTML = `
-            <select>
-              ${['يمن والت','كاش','موبايل موني','محفظتي','شمول تم'].map(t => `<option ${t===w.type?'selected':''}>${t}</option>`).join('')}
-            </select>
-            <input type="text" value="${w.number}">
-            <button class="secondary" onclick="this.parentElement.remove()">حذف</button>
-          `;
-          container.appendChild(div);
-        });
-      }
-    }
-
-    function generatePublicLink() {
-      if (!currentUser) return;
-      const uid = currentUser.uid;
-      const link = `${window.location.origin}/?merchant=${uid}`;
-      document.getElementById('publicLink').textContent = link;
-      // توليد QR
-      const qrContainer = document.getElementById('qrcode');
-      qrContainer.innerHTML = '';
-      new QRCode(qrContainer, {
-        text: link,
-        width: 160,
-        height: 160,
-      });
-    }
-
-    // التعامل مع صفحة العميل (عند فتح رابط معين)
-    function handleCustomerView() {
-      const params = new URLSearchParams(window.location.search);
-      const merchantId = params.get('merchant');
-      if (merchantId) {
-        document.getElementById('authScreen').classList.add('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
-        document.getElementById('customerView').classList.remove('hidden');
-        db.collection('merchants').doc(merchantId).get().then(doc => {
-          if (doc.exists) {
-            const data = doc.data();
-            document.getElementById('customerMerchantName').textContent = data.name || 'متجر';
-            const walletsDiv = document.getElementById('customerWallets');
-            walletsDiv.innerHTML = '';
-            data.wallets.forEach(w => {
-              const div = document.createElement('div');
-              div.className = 'wallet-item';
-              div.innerHTML = `<strong>${w.type}</strong><br><span dir="ltr">${w.number}</span>`;
-              // زر نسخ
-              const copyBtn = document.createElement('button');
-              copyBtn.textContent = 'نسخ الرقم';
-              copyBtn.className = 'secondary';
-              copyBtn.onclick = () => {
-                navigator.clipboard.writeText(w.number).then(() => {
-                  copyBtn.textContent = 'تم النسخ ✓';
-                  setTimeout(() => copyBtn.textContent = 'نسخ الرقم', 1500);
-                });
-              };
-              div.appendChild(copyBtn);
-              walletsDiv.appendChild(div);
-            });
-          } else {
-            document.getElementById('customerMerchantName').textContent = 'التاجر غير موجود';
-          }
-        });
-      }
-    }
-
-    // استدعاء دالة صفحة العميل عند التحميل
-    handleCustomerView();
-  </script>
 </body>
 </html>
