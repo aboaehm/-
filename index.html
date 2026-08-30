@@ -1,105 +1,377 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>دَفعة</title>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-  <!-- QRCode.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #17202a; }
-    .container { max-width: 600px; margin: auto; padding: 16px; }
-    .card { background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.05); }
-    h1, h2, h3 { margin-bottom: 12px; }
-    label { display: block; margin: 10px 0 4px; font-weight: 600; }
-    input, select, button { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 10px; font-size: 16px; margin-bottom: 10px; }
-    button { background: #17202a; color: white; border: none; cursor: pointer; }
-    button.secondary { background: #e9edf1; color: #17202a; }
-    .wallet-item { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
-    .hidden { display: none; }
-    .qr-container { text-align: center; margin: 20px 0; }
-    #qrcode img { margin: auto; }
-    .link-box { background: #f0f5ff; padding: 10px; border-radius: 8px; word-break: break-all; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام الدفع الموحد - لوحة التاجر</title>
+    <!-- مكتبة توليد QR Code -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- مكتبة Supabase للربط السحابي -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #cbd5e1;
+            --radius: 12px;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: var(--radius);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        h2, h3 {
+            margin-top: 0;
+            text-align: center;
+            color: var(--primary);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+        }
+
+        .wallet-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: #64748b;
+            margin-top: 8px;
+        }
+        .btn-secondary:hover {
+            background-color: #475569;
+        }
+
+        .btn-danger {
+            background-color: #ef4444;
+            width: auto;
+            padding: 6px 12px;
+            font-size: 14px;
+        }
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+
+        #qr-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        #qr-container canvas, #qr-container img {
+            border-radius: 8px;
+            padding: 8px;
+            background: white;
+            border: 1px solid var(--border);
+        }
+
+        .wallet-card {
+            background: #f1f5f9;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 18px;
+            color: var(--text-muted);
+            padding: 20px;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <!-- شاشة تسجيل الدخول / التسجيل -->
-    <div id="authScreen" class="card hidden">
-      <h2>تسجيل الدخول للتاجر</h2>
-      <input type="email" id="email" placeholder="البريد الإلكتروني">
-      <input type="password" id="password" placeholder="كلمة المرور">
-      <button onclick="login()">دخول</button>
-      <button class="secondary" onclick="signup()">إنشاء حساب جديد</button>
+
+    <div class="container">
+        <!-- شاشة التحميل عند جلب البيانات -->
+        <div id="loading-view" class="loading hidden">جاري التحميل...</div>
+
+        <!-- لوحة التاجر (تظهر إذا لم يكن هناك مَعرف في الرابط) -->
+        <div id="admin-view" class="hidden">
+            <h2>لوحة إعدادات التاجر</h2>
+            <div class="form-group">
+                <label>اسم المتجر / التاجر</label>
+                <input type="text" id="merchantNameInput" placeholder="مثال: متجر السعيد">
+            </div>
+            <div class="form-group">
+                <label>رقم الهاتف الأساسي</label>
+                <input type="text" id="merchantPhoneInput" placeholder="777000000">
+            </div>
+
+            <div class="form-group">
+                <label>المحافظ والأرقام</label>
+                <div id="walletsList"></div>
+                <button type="button" class="btn-secondary" onclick="addWalletRow()">+ إضافة محفظة أخرى</button>
+            </div>
+
+            <button onclick="saveMerchantData()">حفظ وتوليد الـ QR</button>
+
+            <div id="qr-section" class="hidden" style="margin-top: 20px;">
+                <h3>رمز الـ QR الخاص بك</h3>
+                <div id="qr-container"></div>
+                <p style="text-align: center; font-size: 13px; color: var(--text-muted);">امسح الرمز أو انسخ رابط صفحتك للزبائن</p>
+                <button class="btn-secondary" onclick="copyCustomerLink()">نسخ رابط صفحة الدفع</button>
+            </div>
+        </div>
+
+        <!-- لوحة العميل (تظهر تلقائياً عندما يفتح الزبون رابط التاجر) -->
+        <div id="customer-view" class="hidden">
+            <h2 id="custMerchantName">اسم المتجر</h2>
+            <p style="text-align: center; color: var(--text-muted); margin-bottom: 20px;">اختر المحفظة للدفع مباشرة</p>
+            <div id="custWalletsContainer"></div>
+        </div>
     </div>
 
-    <!-- لوحة تحكم التاجر -->
-    <div id="dashboard" class="hidden">
-      <h2>لوحة التحكم</h2>
-      <p>أهلاً <span id="userEmail"></span> <button class="secondary" onclick="logout()" style="width:auto">تسجيل خروج</button></p>
-      <div class="card">
-        <h3>بيانات المتجر</h3>
-        <label>اسم المتجر</label>
-        <input type="text" id="merchantName">
-        <label>رقم الهاتف (اختياري)</label>
-        <input type="tel" id="merchantPhone">
-      </div>
-      <div class="card">
-        <h3>المحافظ</h3>
-        <div id="walletsList"></div>
-        <button class="secondary" onclick="addWallet()">+ إضافة محفظة</button>
-        <button onclick="saveData()">حفظ البيانات</button>
-      </div>
-      <div class="card">
-        <h3>رابط صفحتك للعملاء</h3>
-        <div class="link-box" id="publicLink"></div>
-        <div class="qr-container"><div id="qrcode"></div></div>
-      </div>
-    </div>
+    <script>
+        // إعدادات اتصال Supabase
+        const SUPABASE_URL = 'https://neouddfxqysjuiidscxp.supabase.co';
+        const SUPABASE_KEY = 'Sb_publishable_H1LBZwUHqgU5PSAw6sXAFg_DgefUOph';
+        
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    <!-- صفحة العميل (تظهر عند فتح رابط معين) -->
-    <div id="customerView" class="hidden">
-      <div class="card">
-        <h2 id="customerMerchantName">اسم المتجر</h2>
-        <div id="customerWallets"></div>
-      </div>
-    </div>
-  </div>
+        // توليد معرف عشوائي فريد للتاجر
+        function generateId() {
+            return 'M' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
 
-  <script>
-    // ========== ضع بيانات Firebase الخاصة بك هنا ==========
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
-    // =====================================================
+        window.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const merchantId = urlParams.get('m');
 
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+            if (merchantId) {
+                // وضع العميل: جلب بيانات التاجر من قاعدة البيانات
+                document.getElementById('loading-view').classList.remove('hidden');
+                await loadMerchantForCustomer(merchantId);
+            } else {
+                // وضع التاجر: فتح لوحة الإعدادات
+                document.getElementById('admin-view').classList.remove('hidden');
+                
+                // التحقق هل لديه بيانات محفوظة محلياً أو جلبها
+                let savedId = localStorage.getItem('current_merchant_id');
+                if (savedId) {
+                    await loadMerchantToAdmin(savedId);
+                } else {
+                    addWalletRow('يمن والت', '');
+                    addWalletRow('كاش', '');
+                }
+            }
+        });
 
-    let currentUser = null;
-    let merchantData = null;
+        function addWalletRow(type = '', number = '') {
+            const container = document.getElementById('walletsList');
+            const row = document.createElement('div');
+            row.className = 'wallet-row';
+            row.innerHTML = `
+                <input type="text" placeholder="اسم المحفظة (مثل: جوالي، كاش)" value="${type}" class="w-type" style="flex: 1;">
+                <input type="text" placeholder="رقم الحساب" value="${number}" class="w-num" style="flex: 1;">
+                <button type="button" class="btn-danger" onclick="this.parentElement.remove()">حذف</button>
+            `;
+            container.appendChild(row);
+        }
 
-    // تحقق من وجود مستخدم مسجل
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        currentUser = user;
-        document.getElementById('authScreen').classList.add('hidden');
-        document.getElementById('dashboard').classList.remove('hidden');
-        document.getElementById('userEmail').textContent = user.email;
-        loadMerchantData();
-      } else {
-        currentUser = null;
+        async function saveMerchantData() {
+            const name = document.getElementById('merchantNameInput').value.trim();
+            const phone = document.getElementById('merchantPhoneInput').value.trim();
+            
+            if (!name) {
+                alert('الرجاء إدخال اسم المتجر');
+                return;
+            }
+
+            let wallets = [];
+            document.querySelectorAll('.wallet-row').forEach(row => {
+                const type = row.querySelector('.w-type').value.trim();
+                const number = row.querySelector('.w-num').value.trim();
+                if (type && number) {
+                    wallets.push({ type, number });
+                }
+            });
+
+            if (wallets.length === 0) {
+                alert('الرجاء إضافة محفظة واحدة على الأقل برقمها الصحيح');
+                return;
+            }
+
+            let merchantId = localStorage.getItem('current_merchant_id');
+            if (!merchantId) {
+                merchantId = generateId();
+                localStorage.setItem('current_merchant_id', merchantId);
+            }
+
+            // الحفظ في قاعدة بيانات Supabase
+            const { error } = await supabaseClient
+                .from('merchants')
+                -upsert({
+                    id: merchantId,
+                    merchant_name: name,
+                    merchant_phone: phone,
+                    wallets: wallets
+                });
+
+            if (error) {
+                alert('حدث خطأ أثناء الحفظ: ' + error.message);
+                return;
+            }
+
+            alert('تم الحفظ بنجاح!');
+            generateQRCode(merchantId);
+        }
+
+        async function loadMerchantToAdmin(merchantId) {
+            const { data, error } = await supabaseClient
+                .from('merchants')
+                .select('*')
+                .eq('id', merchantId)
+                .single();
+
+            if (data) {
+                document.getElementById('merchantNameInput').value = data.merchant_name || '';
+                document.getElementById('merchantPhoneInput').value = data.merchant_phone || '';
+                
+                const container = document.getElementById('walletsList');
+                container.innerHTML = '';
+                if (data.wallets && data.wallets.length > 0) {
+                    data.wallets.forEach(w => addWalletRow(w.type, w.number));
+                } else {
+                    addWalletRow();
+                }
+                generateQRCode(merchantId);
+            } else {
+                addWalletRow();
+            }
+        }
+
+        function generateQRCode(merchantId) {
+            const qrSection = document.getElementById('qr-section');
+            const qrContainer = document.getElementById('qr-container');
+            qrContainer.innerHTML = '';
+            qrSection.classList.remove('hidden');
+
+            const fullLink = window.location.origin + window.location.pathname + '?m=' + merchantId;
+            
+            new QRCode(qrContainer, {
+                text: fullLink,
+                width: 180,
+                height: 180
+            });
+        }
+
+        function copyCustomerLink() {
+            const merchantId = localStorage.getItem('current_merchant_id');
+            const fullLink = window.location.origin + window.location.pathname + '?m=' + merchantId;
+            navigator.clipboard.writeText(fullLink);
+            alert('تم نسخ رابط صفحة الدفع بنجاح!');
+        }
+
+        async function loadMerchantForCustomer(merchantId) {
+            const { data, error } = await supabaseClient
+                .from('merchants')
+                .select('*')
+                .eq('id', merchantId)
+                .single();
+
+            document.getElementById('loading-view').classList.add('hidden');
+
+            if (error || !data) {
+                document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>عذراً، لم يتم العثور على بيانات هذا التاجر أو أن الرابط غير صحيح.</h2></div>';
+                return;
+            }
+
+            document.getElementById('customer-view').classList.remove('hidden');
+            document.getElementById('custMerchantName').innerText = data.merchant_name;
+
+            const container = document.getElementById('custWalletsContainer');
+            container.innerHTML = '';
+
+            if (data.wallets && data.wallets.length > 0) {
+                data.wallets.forEach(w => {
+                    const card = document.createElement('div');
+                    card.className = 'wallet-card';
+                    card.innerHTML = `
+                        <div>
+                            <strong>${w.type}</strong><br>
+                            <span dir="ltr" style="font-size: 18px; font-weight: bold; color: var(--primary);">${w.number}</span>
+                        </div>
+                        <button style="width: auto; padding: 8px 16px;" onclick="navigator.clipboard.writeText('${w.number}'); alert('تم نسخ الرقم: ${w.number}');">نسخ الرقم</button>
+                    `;
+                    container.appendChild(card);
+                });
+            } else {
+                container.innerHTML = '<p style="text-align: center; color: var-text-muted);">لا توجد محافظ مضافة حالياً.</p>';
+            }
+        }
+    </script>
+</body>
+</html>
         document.getElementById('authScreen').classList.remove('hidden');
         document.getElementById('dashboard').classList.add('hidden');
       }
