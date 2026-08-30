@@ -47,10 +47,7 @@
             color: var(--primary);
         }
 
-        .form-group {
-            margin-bottom: 16px;
-        }
-
+        .form-group { margin-bottom:16px; }
         label { display:block; margin-bottom:6px; font-weight:600; }
 
         input[type="text"], input[type="tel"] {
@@ -86,11 +83,15 @@
         .link-box { background:#f0f5ff; padding:10px; border-radius:8px; word-break:break-all; text-align:center; }
 
         .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; background: rgba(0,0,0,.8); color:white; padding:8px 12px; border-radius:8px; display:none; }
+
+        .banner { background: #fff7ed; border: 1px solid #f5c6a5; padding:10px; border-radius:8px; margin-bottom:12px; color:#854d00; }
     </style>
 </head>
 <body>
     <div class="container">
         <div id="loading-view" class="loading hidden">جاري التحميل...</div>
+
+        <div id="offline-banner" class="banner hidden">الخدمة السحابية غير متاحة حالياً. يمكنك العمل محلياً أو إنشاء رابط مستقل لا يتطلب الخادم.</div>
 
         <!-- لوحة التاجر -->
         <div id="admin-view" class="hidden" aria-live="polite">
@@ -113,6 +114,11 @@
             </div>
 
             <button id="saveBtn" onclick="saveMerchantData()">حفظ وتوليد الـ QR</button>
+
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button class="btn-secondary" type="button" onclick="exportMerchantJSON()">تحميل النسخة (JSON)</button>
+                <button class="btn-secondary" type="button" onclick="createSelfContainedLink()">إنشاء رابط مستقل (مضمّن البيانات)</button>
+            </div>
 
             <div id="qr-section" class="hidden" style="margin-top:20px;">
                 <h3>رمز الـ QR الخاص بك</h3>
@@ -140,8 +146,8 @@
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // Helpers
-        function show(el) { el.classList.remove('hidden'); }
-        function hide(el) { el.classList.add('hidden'); }
+        function show(el) { if (el) el.classList.remove('hidden'); }
+        function hide(el) { if (el) el.classList.add('hidden'); }
         function showToast(msg, timeout = 2000) {
             const t = document.getElementById('toast');
             t.textContent = msg;
@@ -149,13 +155,19 @@
             setTimeout(() => t.style.display = 'none', timeout);
         }
 
-        function generateId() {
-            return 'M' + Math.random().toString(36).substring(2, 9).toUpperCase();
-        }
+        function generateId() { return 'M' + Math.random().toString(36).substring(2, 9).toUpperCase(); }
+        function generatePublicSlug() { return Math.random().toString(36).substring(2,8); }
 
-        function generatePublicSlug() {
-            // short, URL-safe slug; collision unlikely but handled by upsert
-            return Math.random().toString(36).substring(2,8);
+        // UTF-8 safe base64
+        function base64EncodeUnicode(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(match, p1) {
+                return String.fromCharCode('0x' + p1);
+            }));
+        }
+        function base64DecodeUnicode(str) {
+            return decodeURIComponent(Array.prototype.map.call(atob(str), function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
         }
 
         // Create a wallet row without using innerHTML to avoid XSS
@@ -191,72 +203,110 @@
             container.appendChild(row);
         }
 
-        // Save merchant data (creates or updates). Uses a stable merchant id stored in localStorage.
+        // Export merchant JSON
+        function exportMerchantJSON() {
+            const name = document.getElementById('merchantNameInput').value.trim();
+            const phone = document.getElementById('merchantPhoneInput').value.trim();
+            const wallets = [];
+            document.querySelectorAll('.wallet-row').forEach(row => {
+                const type = row.querySelector('.w-type').value.trim();
+                const number = row.querySelector('.w-num').value.trim();
+                if (type && number) wallets.push({ type, number });
+            });
+            const payload = { merchant_name: name, merchant_phone: phone, wallets };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (name || 'merchant') + '.json';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast('تم تنزيل الملف');
+        }
+
+        // Create a self-contained link (data encoded in URL) for environments where Supabase is unreachable
+        function createSelfContainedLink() {
+            const name = document.getElementById('merchantNameInput').value.trim();
+            const phone = document.getElementById('merchantPhoneInput').value.trim();
+            if (!name) { showToast('الرجاء إدخال اسم المتجر'); return; }
+            const wallets = [];
+            document.querySelectorAll('.wallet-row').forEach(row => {
+                const type = row.querySelector('.w-type').value.trim();
+                const number = row.querySelector('.w-num').value.trim();
+                if (type && number) wallets.push({ type, number });
+            });
+            if (wallets.length === 0) { showToast('الرجاء إضافة محفظة واحدة على الأقل'); return; }
+
+            const obj = { merchant_name: name, merchant_phone: phone, wallets };
+            const encoded = base64EncodeUnicode(JSON.stringify(obj));
+            const fullLink = window.location.origin + window.location.pathname + '?data=' + encodeURIComponent(encoded);
+
+            // Warn user about length
+            if (fullLink.length > 2000) {
+                if (!confirm('الرابط طويل، قد لا يعمل في بعض التطبيقات (طول > 2000 حرف). هل تريد المتابعة؟')) return;
+            }
+
+            document.getElementById('publicLink').textContent = fullLink;
+            try { new QRCode(document.getElementById('qr-container'), { text: fullLink, width: 180, height: 180 }); } catch (e) {}
+            show(document.getElementById('qr-section'));
+            showToast('تم إنشاء رابط مستقل (مضمّن البيانات)');
+        }
+
+        // Save merchant data to Supabase if available; otherwise fallback to localStorage
         async function saveMerchantData() {
             const saveBtn = document.getElementById('saveBtn');
             saveBtn.disabled = true;
-            const previousText = saveBtn.textContent;
+            const prev = saveBtn.textContent;
             saveBtn.textContent = 'جاري الحفظ...';
 
             try {
                 const name = document.getElementById('merchantNameInput').value.trim();
                 const phone = document.getElementById('merchantPhoneInput').value.trim();
-                if (!name) {
-                    showToast('الرجاء إدخال اسم المتجر');
-                    return;
-                }
-
+                if (!name) { showToast('الرجاء إدخال اسم المتجر'); return; }
                 const wallets = [];
                 document.querySelectorAll('.wallet-row').forEach(row => {
                     const type = row.querySelector('.w-type').value.trim();
                     const number = row.querySelector('.w-num').value.trim();
                     if (type && number) wallets.push({ type, number });
                 });
-                if (wallets.length === 0) {
-                    showToast('الرجاء إضافة محفظة واحدة على الأقل');
-                    return;
-                }
+                if (wallets.length === 0) { showToast('الرجاء إضافة محفظة واحدة على الأقل'); return; }
 
+                // prepare payload
                 let merchantId = localStorage.getItem('current_merchant_id');
-                if (!merchantId) {
-                    merchantId = generateId();
-                    localStorage.setItem('current_merchant_id', merchantId);
+                if (!merchantId) { merchantId = generateId(); localStorage.setItem('current_merchant_id', merchantId); }
+                let publicSlug = localStorage.getItem('current_public_slug') || generatePublicSlug();
+
+                const payload = { id: merchantId, merchant_name: name, merchant_phone: phone, wallets, public_slug: publicSlug };
+
+                // Try saving to Supabase
+                let savedToServer = false;
+                try {
+                    const { data, error } = await supabase.from('merchants').upsert(payload, { onConflict: 'id' }).select();
+                    if (error) throw error;
+                    savedToServer = true;
+                } catch (err) {
+                    console.warn('Supabase save failed, falling back to localStorage', err.message || err);
                 }
 
-                // ensure there is a public_slug (used in the customer link)
-                let publicSlug = localStorage.getItem('current_public_slug');
-
-                // upsert merchant. If publicSlug not present generate it server-side (we keep client-side fallback)
-                if (!publicSlug) publicSlug = generatePublicSlug();
-
-                const payload = {
-                    id: merchantId,
-                    merchant_name: name,
-                    merchant_phone: phone,
-                    wallets: wallets,
-                    public_slug: publicSlug
-                };
-
-                const { data, error } = await supabase
-                    .from('merchants')
-                    .upsert(payload, { onConflict: 'id' })
-                    .select();
-
-                if (error) {
-                    console.error('Supabase save error', error);
-                    showToast('حدث خطأ أثناء الحفظ');
-                    return;
-                }
-
-                // store public slug for fast reuse
+                // Always persist locally for preview
+                localStorage.setItem('current_merchant_id', merchantId);
                 localStorage.setItem('current_public_slug', publicSlug);
+                localStorage.setItem('merchant_preview_' + merchantId, JSON.stringify(payload));
 
-                showToast('تم الحفظ بنجاح');
-                // show QR and link
+                if (!savedToServer) {
+                    show(document.getElementById('offline-banner'));
+                    showToast('تم الحفظ محلياً (الخادم غير متاح)');
+                } else {
+                    showToast('تم الحفظ في الخادم');
+                }
+
+                // Show QR using server public slug
                 generateQRCode(publicSlug);
             } finally {
                 saveBtn.disabled = false;
-                saveBtn.textContent = previousText;
+                saveBtn.textContent = prev;
             }
         }
 
@@ -271,29 +321,26 @@
             const publicLinkBox = document.getElementById('publicLink');
             publicLinkBox.textContent = fullLink;
 
-            new QRCode(qrContainer, { text: fullLink, width: 180, height: 180 });
+            try { new QRCode(qrContainer, { text: fullLink, width: 180, height: 180 }); } catch (e) {}
         }
 
         function copyCustomerLink() {
             const publicSlug = localStorage.getItem('current_public_slug');
-            if (!publicSlug) { showToast('لا يوجد رابط محفوظ'); return; }
-            const fullLink = window.location.origin + window.location.pathname + '?m=' + encodeURIComponent(publicSlug);
-            navigator.clipboard.writeText(fullLink).then(() => showToast('تم نسخ رابط صفحة الدفع'));   
+            let fullLink = null;
+            if (publicSlug) fullLink = window.location.origin + window.location.pathname + '?m=' + encodeURIComponent(publicSlug);
+            else {
+                // maybe we have data link in publicLink box
+                fullLink = document.getElementById('publicLink').textContent || null;
+            }
+            if (!fullLink) { showToast('لا يوجد رابط محفوظ'); return; }
+            navigator.clipboard.writeText(fullLink).then(() => showToast('تم نسخ رابط صفحة الدفع'));
         }
 
         async function loadMerchantToAdmin(merchantId) {
             try {
-                const { data, error } = await supabase
-                    .from('merchants')
-                    .select('*')
-                    .eq('id', merchantId)
-                    .maybeSingle();
-
-                if (error) {
-                    console.error('loadMerchantToAdmin error', error);
-                    return;
-                }
-
+                // Try server fetch first
+                const { data, error } = await supabase.from('merchants').select('*').eq('id', merchantId).maybeSingle();
+                if (error) throw error;
                 if (data) {
                     document.getElementById('merchantNameInput').value = data.merchant_name || '';
                     document.getElementById('merchantPhoneInput').value = data.merchant_phone || '';
@@ -305,99 +352,145 @@
                     else addWalletRow();
 
                     if (data.public_slug) generateQRCode(data.public_slug);
+                    hide(document.getElementById('offline-banner'));
                 } else {
-                    addWalletRow();
+                    // fallback to local preview if present
+                    const local = localStorage.getItem('merchant_preview_' + merchantId);
+                    if (local) {
+                        const obj = JSON.parse(local);
+                        document.getElementById('merchantNameInput').value = obj.merchant_name || '';
+                        document.getElementById('merchantPhoneInput').value = obj.merchant_phone || '';
+                        const container = document.getElementById('walletsList');
+                        container.innerHTML = '';
+                        if (obj.wallets && obj.wallets.length) obj.wallets.forEach(w => addWalletRow(w.type, w.number));
+                        else addWalletRow();
+                        if (obj.public_slug) generateQRCode(obj.public_slug);
+                        show(document.getElementById('offline-banner'));
+                    } else addWalletRow();
                 }
             } catch (err) {
-                console.error(err);
+                console.warn('loadMerchantToAdmin failed, using local if available', err.message || err);
+                // use local if available
+                const local = localStorage.getItem('merchant_preview_' + merchantId);
+                if (local) {
+                    const obj = JSON.parse(local);
+                    document.getElementById('merchantNameInput').value = obj.merchant_name || '';
+                    document.getElementById('merchantPhoneInput').value = obj.merchant_phone || '';
+                    const container = document.getElementById('walletsList');
+                    container.innerHTML = '';
+                    if (obj.wallets && obj.wallets.length) obj.wallets.forEach(w => addWalletRow(w.type, w.number));
+                    else addWalletRow();
+                    if (obj.public_slug) generateQRCode(obj.public_slug);
+                    show(document.getElementById('offline-banner'));
+                } else addWalletRow();
             }
         }
 
-        async function loadMerchantForCustomer(publicSlug) {
-            show(document.getElementById('loading-view'));
-            try {
-                const { data, error } = await supabase
-                    .from('merchants')
-                    .select('*, wallets')
-                    .eq('public_slug', publicSlug)
-                    .maybeSingle();
-
-                hide(document.getElementById('loading-view'));
-
-                if (error || !data) {
-                    document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>عذراً، لم يتم العثور على بيانات هذا التاجر</h2></div>';
+        async function loadMerchantForCustomerRoute(mParam, dataParam) {
+            // priority: dataParam (self-contained) -> mParam (server/public slug)
+            if (dataParam) {
+                try {
+                    const decoded = base64DecodeUnicode(decodeURIComponent(dataParam));
+                    const obj = JSON.parse(decoded);
+                    renderCustomerFromObject(obj);
+                    return;
+                } catch (err) {
+                    console.error('Failed to decode data param', err);
+                    document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>رابط البيانات غير صالح</h2></div>';
                     return;
                 }
-
-                show(document.getElementById('customer-view'));
-                document.getElementById('custMerchantName').textContent = data.merchant_name || 'متجر';
-
-                const container = document.getElementById('custWalletsContainer');
-                container.innerHTML = '';
-
-                if (data.wallets && data.wallets.length > 0) {
-                    data.wallets.forEach(w => {
-                        const card = document.createElement('div');
-                        card.className = 'wallet-card';
-
-                        const left = document.createElement('div');
-                        const title = document.createElement('div');
-                        const strong = document.createElement('strong');
-                        strong.textContent = w.type;
-                        const number = document.createElement('div');
-                        number.style.fontSize = '18px';
-                        number.style.fontWeight = '700';
-                        number.style.color = 'var(--primary)';
-                        number.style.direction = 'ltr';
-                        number.textContent = w.number;
-
-                        left.appendChild(strong);
-                        left.appendChild(number);
-
-                        const btn = document.createElement('button');
-                        btn.style.width = 'auto';
-                        btn.style.padding = '8px 16px';
-                        btn.textContent = 'نسخ الرقم';
-                        btn.onclick = async () => {
-                            try {
-                                await navigator.clipboard.writeText(w.number);
-                                showToast('تم نسخ الرقم');
-                            } catch (e) {
-                                showToast('فشل النسخ');
-                            }
-                        };
-
-                        card.appendChild(left);
-                        card.appendChild(btn);
-                        container.appendChild(card);
-                    });
-                } else {
-                    const p = document.createElement('p');
-                    p.style.textAlign = 'center';
-                    p.style.color = 'var(--text-muted)';
-                    p.textContent = 'لا توجد محافظ مضافة حالياً.';
-                    container.appendChild(p);
-                }
-            } catch (err) {
-                console.error(err);
-                hide(document.getElementById('loading-view'));
-                document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>حدث خطأ غير متوقع</h2></div>';
             }
-        }
 
-        // On load, decide which view to show based on ?m=publicSlug
-        window.addEventListener('DOMContentLoaded', async () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const publicSlug = urlParams.get('m');
-
-            if (publicSlug) {
-                // customer flow
-                hide(document.getElementById('admin-view'));
-                await loadMerchantForCustomer(publicSlug);
+            if (!mParam) {
+                document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>المعرف غير موجود</h2></div>';
                 return;
             }
 
-            // admin flow
+            // Try server lookup by public_slug
+            try {
+                const { data, error } = await supabase.from('merchants').select('*').eq('public_slug', mParam).maybeSingle();
+                if (error || !data) {
+                    // fallback: check localStorage (merchant_preview_<id>) where id may match
+                    const local = localStorage.getItem('merchant_preview_' + mParam);
+                    if (local) {
+                        const obj = JSON.parse(local);
+                        renderCustomerFromObject(obj);
+                        show(document.getElementById('offline-banner'));
+                        return;
+                    }
+                    document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>عذراً، لم يتم العثور على بيانات هذا التاجر</h2></div>';
+                    return;
+                }
+                renderCustomerFromObject(data);
+            } catch (err) {
+                console.warn('Server lookup failed', err.message || err);
+                const local = localStorage.getItem('merchant_preview_' + mParam);
+                if (local) {
+                    const obj = JSON.parse(local);
+                    renderCustomerFromObject(obj);
+                    show(document.getElementById('offline-banner'));
+                } else {
+                    document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h2>عذراً، لم يتم العثور على بيانات هذا التاجر</h2></div>';
+                }
+            }
+        }
+
+        function renderCustomerFromObject(data) {
+            hide(document.getElementById('loading-view'));
+            show(document.getElementById('customer-view'));
+            document.getElementById('custMerchantName').textContent = data.merchant_name || 'متجر';
+            const container = document.getElementById('custWalletsContainer');
+            container.innerHTML = '';
+            if (data.wallets && data.wallets.length > 0) {
+                data.wallets.forEach(w => {
+                    const card = document.createElement('div');
+                    card.className = 'wallet-card';
+                    const left = document.createElement('div');
+                    const strong = document.createElement('strong');
+                    strong.textContent = w.type;
+                    const number = document.createElement('div');
+                    number.style.fontSize = '18px';
+                    number.style.fontWeight = '700';
+                    number.style.color = 'var(--primary)';
+                    number.style.direction = 'ltr';
+                    number.textContent = w.number;
+                    left.appendChild(strong);
+                    left.appendChild(number);
+                    const btn = document.createElement('button');
+                    btn.style.width = 'auto';
+                    btn.style.padding = '8px 16px';
+                    btn.textContent = 'نسخ الرقم';
+                    btn.onclick = async () => {
+                        try { await navigator.clipboard.writeText(w.number); showToast('تم نسخ الرقم'); }
+                        catch (e) { showToast('فشل النسخ'); }
+                    };
+                    card.appendChild(left);
+                    card.appendChild(btn);
+                    container.appendChild(card);
+                });
+            } else {
+                const p = document.createElement('p');
+                p.style.textAlign = 'center';
+                p.style.color = 'var(--text-muted)';
+                p.textContent = 'لا توجد محافظ مضافة حالياً.';
+                container.appendChild(p);
+            }
+        }
+
+        // On load, decide which view to show based on ?m=publicSlug or ?data=BASE64
+        window.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const publicSlug = urlParams.get('m');
+            const dataParam = urlParams.get('data');
+
+            if (dataParam || publicSlug) {
+                hide(document.getElementById('admin-view'));
+                show(document.getElementById('loading-view'));
+                await loadMerchantForCustomerRoute(publicSlug, dataParam);
+                return;
+            }
+
+            // admin flow: try to detect Supabase connectivity by a light query
             show(document.getElementById('admin-view'));
             const savedId = localStorage.getItem('current_merchant_id');
             if (savedId) await loadMerchantToAdmin(savedId);
@@ -405,6 +498,19 @@
                 addWalletRow('يمن والت', '');
                 addWalletRow('كاش', '');
             }
+
+            // Also perform a lightweight connectivity check in background
+            (async () => {
+                try {
+                    // a tiny query to check server availability (no sensitive info)
+                    const { error } = await supabase.from('merchants').select('id').limit(1);
+                    if (error) throw error;
+                    hide(document.getElementById('offline-banner'));
+                } catch (err) {
+                    // supabase likely unreachable -> show offline banner
+                    show(document.getElementById('offline-banner'));
+                }
+            })();
         });
     </script>
 </body>
